@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Conn3x
+        env: &gh
+          GH_TOKEN: ${{ github.token }}
+        run: &install |
+          tag=$(gh release view -R conn3xorg/conn3x --json tagName -q .tagName)
+          file="conn3x_${tag#v}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/$file"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/checksums.txt"
+          grep " $file\$" checksums.txt | sha256sum -c -
+          mkdir -p bin && tar -xzf "$file" -C bin conn3x
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: conn3x version
+      - run: conn3x fmt -check -recursive
+      - name: Validate
+        run: conn3x init -backend=false && conn3x validate
+      - name: Validate the example
+        working-directory: examples/local
+        run: conn3x init -backend=false && conn3x validate
+
+  e2e:
+    needs: validate
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky10, fedora45, ubuntu2404, debian13]
+    name: e2e (${{ matrix.distro }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The test host images live in the Conn3x repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: conn3xorg/conn3x
+          ref: main
+          path: conn3x
+          persist-credentials: false
+          sparse-checkout: test/images
+      - name: Install Conn3x
+        env: *gh
+        run: *install
+      - name: Start the ${{ matrix.distro }} host
+        working-directory: examples/local
+        env:
+          CONTAINERFILE: ${{ github.workspace }}/conn3x/test/images/${{ matrix.distro }}/Containerfile
+        run: ./up.sh
+      - name: Apply, then plan again with no changes
+        working-directory: examples/local
+        env:
+          TF_VAR_admin_password: ci-only-admin-pass-1
+        run: |
+          conn3x init
+          conn3x apply -auto-approve
+          conn3x plan -detailed-exitcode
+      # The admin binds over LDAP and lists ou=people, a wrong password is
+      # refused, and the web interface answers /health. The config must hold
+      # no secrets.
+      - name: Bind as the admin and search
+        run: &check |
+          podman exec -i -e PW="$PW" circuit-lldap sh -eu <<'EOF'
+          if command -v apt-get >/dev/null; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -qy ldap-utils >/dev/null
+          else
+            dnf -qy install openldap-clients >/dev/null
+          fi
+          b=dc=example,dc=test
+          search() { ldapsearch -x -LLL -H ldap://127.0.0.1:3890 -D "uid=admin,ou=people,$b" -w "$1" -b "ou=people,$b" dn; }
+          curl -sSf -o /dev/null http://127.0.0.1:17170/health
+          search "$PW" | grep -qx "dn: uid=admin,ou=people,$b"
+          if search wrong-password-1 >/dev/null 2>&1; then exit 1; fi
+          [ "$(stat -c '%U:%G %a' /etc/lldap/admin_password)" = "root:lldap 640" ]
+          if grep -qE '(_secret|_seed|_pass|database_url) *= *"[^/]' /etc/lldap/lldap_config.toml; then exit 1; fi
+          EOF
+        env:
+          PW: ci-only-admin-pass-1
+      # LLDAP sets the admin password from its file on every start, so a
+      # second apply with a new one restarts it and the old one stops working.
+      - name: Change the admin password with a second apply
+        working-directory: examples/local
+        env:
+          TF_VAR_admin_password: ci-only-admin-pass-2
+        run: |
+          conn3x apply -auto-approve
+          conn3x plan -detailed-exitcode
+      - name: Bind with the new password
+        run: *check
+        env:
+          PW: ci-only-admin-pass-2
+      - name: Check the old password is refused
+        run: |
+          if podman exec circuit-lldap ldapsearch -x -H ldap://127.0.0.1:3890 -D uid=admin,ou=people,dc=example,dc=test -w ci-only-admin-pass-1 -b dc=example,dc=test >/dev/null 2>&1; then exit 1; fi
+      - name: Clean up
+        if: always()
+        working-directory: examples/local
+        run: ./down.sh

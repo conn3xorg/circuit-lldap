@@ -1,0 +1,28 @@
+variable "port" {
+  type    = number
+  default = 2222
+}
+
+# Pass it at run time, such as with TF_VAR_admin_password.
+variable "admin_password" {
+  type      = string
+  ephemeral = true
+  sensitive = true
+}
+
+module "lldap" {
+  source = "../.."
+
+  hosts                = { box = "127.0.0.1" }
+  ssh_port             = var.port
+  ssh_private_key_file = "./id_ed25519"
+  ssh_known_hosts_file = "./known_hosts"
+
+  base_dn        = "dc=example,dc=test"
+  admin_email    = "admin@example.test"
+  admin_password = var.admin_password
+}
+
+output "admin_dn" {
+  value = module.lldap.admin_dn
+}
