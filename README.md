@@ -1,5 +1,7 @@
 # circuit-lldap
 
+[![Conn3x grade](https://conn3x.org/circuits/lldap/grade.svg)](https://conn3x.org/circuits/lldap/grade)
+
 A Conn3x circuit that runs [LLDAP](https://github.com/lldap/lldap), a small LDAP server with a web interface for managing users and groups. It's the one directory your other services sign people in against: Authelia, Nextcloud, Jellyfin, Gitea and Forgejo all speak LDAP, so one account and one password works in every one of them, and you add a person in one place instead of five.
 
 It downloads a pinned LLDAP release from GitHub, checks its SHA-256, and runs it under systemd as an `lldap` user. You set the base DN, the addresses and ports, and the admin password; the circuit writes `/etc/lldap/lldap_config.toml` from them and restarts LLDAP when anything changes. Out of the box LLDAP listens only on `127.0.0.1`, LDAP on port 3890 and the web interface on 17170, and keeps its data in SQLite.
