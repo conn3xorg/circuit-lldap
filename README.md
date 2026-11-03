@@ -2,11 +2,9 @@
 
 [![Conn3x grade](https://conn3x.org/circuits/lldap/grade.svg)](https://conn3x.org/circuits/lldap/grade)
 
-A Conn3x circuit that runs [LLDAP](https://github.com/lldap/lldap), a small LDAP server with a web interface for managing users and groups. It's the one directory your other services sign people in against: Authelia, Nextcloud, Jellyfin, Gitea and Forgejo all speak LDAP, so one account and one password works in every one of them, and you add a person in one place instead of five.
+Use this Conn3x circuit to install [LLDAP](https://github.com/lldap/lldap), a self-hosted directory for shared logins. It gives services such as Authelia, Nextcloud, Jellyfin, Gitea and Forgejo one account directory for users and groups.
 
-It downloads a pinned LLDAP release from GitHub, checks its SHA-256, and runs it under systemd as an `lldap` user. You set the base DN, the addresses and ports, and the admin password; the circuit writes `/etc/lldap/lldap_config.toml` from them and restarts LLDAP when anything changes. Out of the box LLDAP listens only on `127.0.0.1`, LDAP on port 3890 and the web interface on 17170, and keeps its data in SQLite.
-
-The JWT secret and the key seed are generated on the host by the first apply and never leave it. The admin password and the database URL reach the host as files, so neither is in the plan or state either. Change `admin_password` and the next apply sets it.
+The circuit verifies a pinned LLDAP release and runs it as a systemd service. LDAP and the web interface listen only on `127.0.0.1` by default, and LLDAP stores data in SQLite. The admin password and generated secrets stay out of the Conn3x plan and state. Change `admin_password` and apply again to set a new admin password.
 
 ## Usage
 
@@ -97,6 +95,20 @@ Before the circuit runs, the `conn3x_host` data source reads each host's archite
 - Changing `base_dn` after the first apply changes the DNs LLDAP serves, and every service bound to the old ones needs updating.
 - Deleting the module leaves LLDAP installed and running, with its data.
 
+### Removing LLDAP
+
+Removing this module from your Conn3x configuration does not stop or uninstall LLDAP. To remove the service from a host, stop it and remove its unit, config and installed releases:
+
+```sh
+sudo systemctl disable --now lldap
+sudo rm /etc/systemd/system/lldap.service
+sudo systemctl daemon-reload
+sudo rm -r /opt/lldap /etc/lldap
+sudo userdel lldap
+```
+
+The local SQLite database remains in `/var/lib/lldap`. Back it up with LLDAP stopped if you may need it later. Also keep `/etc/lldap/key_seed` from before you remove `/etc/lldap`: LLDAP derives the key it uses to store passwords from this seed, so a restored database without it cannot verify its saved passwords. To delete the local database permanently, remove `/var/lib/lldap` after backing up anything you need. If you use PostgreSQL or MySQL, the circuit does not create or remove that database.
+
 ### Upgrading
 
 Set `lldap_version` and `checksums` together. Each asset on the [release page](https://github.com/lldap/lldap/releases) shows its SHA-256, or:
@@ -158,11 +170,13 @@ Requires Conn3x v0.6.7 or later, systemd on each host, and outbound HTTPS to git
 
 ## Tested on
 
-Rocky Linux 10, Fedora 45, Ubuntu 24.04 and Debian 13. CI applies [examples/local](examples/local) to each on amd64 and checks that the second plan has no changes. Then `ldapsearch` binds as `uid=admin,ou=people,dc=example,dc=test` and finds the admin under `ou=people`, a wrong password is refused, `/health` answers, and the config holds no secrets. A second apply with a new `admin_password` restarts LLDAP, the plan after it has no changes, the new password binds and the old one is refused. The same checks passed on arm64 containers of all four by hand.
+CI applies [examples/local](examples/local) on amd64 with Rocky Linux 10, Fedora 45, Ubuntu 24.04 and Debian 13. On each system, it checks that:
 
-By hand, on Debian 13 in a container, LDAPS with a self-signed certificate answered `ldapsearch` on port 6360 and the plan had no changes.
+- A second plan reports `No changes.`
+- `ldapsearch` can find the admin, a wrong password is refused, `/health` answers, and the config contains no secrets.
+- Changing `admin_password` restarts LLDAP, the new password works, the old one is refused, and the next plan reports `No changes.`
 
-On an Ubuntu 24.04 droplet and a Rocky Linux 10 droplet with SELinux enforcing, both with 1 vCPU and 1 GB of memory, the same checks passed, the password change included. On Rocky Linux, LLDAP ran as `unconfined_service_t` and the audit log had no denials. After a reboot both came back, the new password still bound, and the plan had no changes.
+The same checks passed by hand on arm64 containers of all four distributions. On Debian 13 in a container, LDAPS with a self-signed certificate answered `ldapsearch` on port 6360 and the plan had no changes. On Ubuntu 24.04 and Rocky Linux 10 droplets with SELinux enforcing, the checks and password change also passed; after reboot, LLDAP came back and the plan had no changes. On Rocky Linux, LLDAP ran as `unconfined_service_t` and the audit log had no denials.
 
 PostgreSQL and MySQL through `database_url` haven't been tried.
 
