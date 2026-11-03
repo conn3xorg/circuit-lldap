@@ -4,7 +4,7 @@
 
 Use this Conn3x circuit to install [LLDAP](https://github.com/lldap/lldap), a self-hosted directory for shared logins. It gives services such as Authelia, Nextcloud, Jellyfin, Gitea and Forgejo one account directory for users and groups.
 
-The circuit verifies a pinned LLDAP release and runs it as a systemd service. LDAP and the web interface listen only on `127.0.0.1` by default, and LLDAP stores data in SQLite. The admin password and generated secrets stay out of the Conn3x plan and state.
+The circuit verifies a pinned LLDAP release and runs it as a systemd service. LDAP and the web interface listen only on `127.0.0.1` by default, and LLDAP stores data in SQLite. The admin password and generated secrets stay out of the Conn3x plan and state. Change `admin_password` and apply again to set a new admin password.
 
 ## Usage
 
@@ -107,7 +107,7 @@ sudo rm -r /opt/lldap /etc/lldap
 sudo userdel lldap
 ```
 
-The local SQLite database remains in `/var/lib/lldap`. Back it up with LLDAP stopped if you may need it later; also keep `/etc/lldap/key_seed` from before removing `/etc/lldap`, or LLDAP cannot read the saved database if restored. To delete the local database permanently, remove `/var/lib/lldap` after backing up anything you need. If you use PostgreSQL or MySQL, the circuit does not create or remove that database.
+The local SQLite database remains in `/var/lib/lldap`. Back it up with LLDAP stopped if you may need it later. Also keep `/etc/lldap/key_seed` from before you remove `/etc/lldap`: LLDAP derives the key it uses to store passwords from this seed, so a restored database without it cannot verify its saved passwords. To delete the local database permanently, remove `/var/lib/lldap` after backing up anything you need. If you use PostgreSQL or MySQL, the circuit does not create or remove that database.
 
 ### Upgrading
 
