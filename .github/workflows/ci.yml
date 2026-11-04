@@ -119,6 +119,23 @@ jobs:
       - name: Check the old password is refused
         run: |
           if podman exec circuit-lldap ldapsearch -x -H ldap://127.0.0.1:3890 -D uid=admin,ou=people,dc=example,dc=test -w ci-only-admin-pass-1 -b dc=example,dc=test >/dev/null 2>&1; then exit 1; fi
+      # Restarting the container boots systemd again, so this checks LLDAP is
+      # enabled and comes back with its config, database and new password.
+      - name: Restart the host, then wait for LLDAP
+        run: |
+          podman restart circuit-lldap
+          for _ in $(seq 60); do
+            case $(podman exec circuit-lldap systemctl is-system-running 2>/dev/null) in running|degraded) break ;; esac
+            sleep 1
+          done
+          for _ in $(seq 30); do
+            podman exec circuit-lldap curl -sf -o /dev/null http://127.0.0.1:17170/health && break
+            sleep 1
+          done
+      - name: Bind with the new password after the restart
+        run: *check
+        env:
+          PW: ci-only-admin-pass-2
       - name: Clean up
         if: always()
         working-directory: examples/local
