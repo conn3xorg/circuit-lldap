@@ -16,7 +16,7 @@ variable "lldap_admin_password" {
 }
 
 module "lldap" {
-  source = "github.com/conn3xorg/circuit-lldap?ref=v0.1.0"
+  source = "github.com/conn3xorg/circuit-lldap?ref=v0.1.1"
 
   hosts                = { auth1 = "203.0.113.10" }
   ssh_private_key_file = "~/.ssh/id_ed25519"
@@ -119,7 +119,7 @@ gh release view v0.6.3 -R lldap/lldap --json assets -q '.assets[] | .name + " " 
 
 ```hcl
 module "lldap" {
-  source = "github.com/conn3xorg/circuit-lldap?ref=v0.1.0"
+  source = "github.com/conn3xorg/circuit-lldap?ref=v0.1.1"
 
   # ...
   lldap_version = "0.6.3"
