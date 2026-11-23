@@ -166,7 +166,7 @@ The new release unpacks beside the old one, the unit points at it, and LLDAP res
 
 ## Requirements
 
-Requires Conn3x v0.6.7 or later, systemd on each host, and outbound HTTPS to github.com.
+Requires Conn3x v0.28.0 or later, systemd on each host, and outbound HTTPS to github.com.
 
 ## Tested on
 

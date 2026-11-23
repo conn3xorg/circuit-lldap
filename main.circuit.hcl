@@ -226,8 +226,8 @@ circuit "lldap" {
   # that runs the new binary, config and password. A handler would restart
   # it after them. On a first apply it's what starts LLDAP.
   step "restart" {
-    command {
-      command = "systemctl daemon-reload && systemctl restart lldap"
+    service_action {
+      name = "lldap"
       triggers = {
         binary   = conn3x_download.lldap__download[each.key].revision
         config   = conn3x_file.lldap__config[each.key].revision
@@ -252,7 +252,7 @@ circuit "lldap" {
     command {
       command  = "for _ in $(seq 60); do curl -sf -o /dev/null ${local.local_url}/health && exit 0; sleep 1; done; exit 1"
       unless   = "curl -sf -o /dev/null ${local.local_url}/health"
-      triggers = { restart = conn3x_command.lldap__restart[each.key].revision }
+      triggers = { restart = conn3x_service_action.lldap__restart[each.key].revision }
     }
   }
 }
